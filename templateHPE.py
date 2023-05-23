@@ -60,7 +60,7 @@ def measureJoint(kpts1, kpts2):
 def matchKpts(mirror_img):
     r_side = [17,15,2,3,4,9,10,11,24,23,22]
     l_side = [18,16,5,6,7,12,13,14,21,20,19]
-    reflected_mirror = mirror_img
+    reflected_mirror = np.copy(mirror_img)
     for i in range(0,len(r_side)):
         reflected_mirror[r_side[i]] = mirror_img[l_side[i]]
         reflected_mirror[l_side[i]] = mirror_img[r_side[i]]
@@ -96,5 +96,49 @@ points_3D = cv2. triangulatePoints(P1, P2, pts1, pts2)
 
 points_3D /= points_3D[3]
 points_3D = np.transpose(points_3D)
+
+
+server_address = './uds_socket'
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+
+try:
+    sock.connect(server_address)
+except socket.error as e:
+    print (e)
+    sys.exit(1)
+
+
+while True:
+    try:
+         # Recieve size then image from server
+        data = sock.recv(8)  #recieve image size 
+        imgSize = int(data.decode())
+        print(data.decode())
+        data = sock.recv(imgSize)  #recieve img from server
+        while len(data) < imgSize:
+            data += sock.recv(imgSize)
+
+        #send annotated image size and bytes
+        annImgBytes = mask_image(data)
+        # print(len(np.frombuffer(annImgBytes,dtype=np.uint8)))
+        annImgSize = len(annImgBytes)
+
+        sock.sendall('m'.encode())
+
+        msg = str(annImgSize)
+        while (len(msg)<8):
+            msg = '0'+msg
+        print(msg)
+        sock.sendall(msg.encode())
+
+        sock.sendall(annImgBytes)
+
+
+    finally:
+        data = sock.recv(16)
+        if(data.decode()=="close socket"):
+            print ('closing socket')
+            sock.close()
+            break
 
 

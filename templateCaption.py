@@ -9,6 +9,7 @@ import numpy as np
 def add_caption (imageBytes):
     imgArr = np.frombuffer(imageBytes,dtype=np.uint8)
     img = cv2.imdecode(imgArr,cv2.IMREAD_UNCHANGED)
+    blank = np.zeros(img.shape()) #black background
 
     imHeight, imWidth = img.shape[0:2]
 
@@ -25,13 +26,13 @@ def add_caption (imageBytes):
 
     org = (int((imWidth-textWidth)/2)), int(imHeight*0.9)
 
-    image = cv2.putText(img, caption, org, font, 
+    cv2.putText(blank, caption, org, font, 
                    fontscale, color, thickness, cv2.LINE_AA)
 
-    return cv2.imencode('.jpeg', image)[1].tobytes()
+    return cv2.imencode('.jpeg', blank)[1].tobytes()
     #return
 
-def generate_text(image):
+def generate_text(imageBytes):
   caption = "placeholder"
   return caption
 
@@ -42,44 +43,35 @@ sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 
 try:
     sock.connect(server_address)
+    print('connected')
 except socket.error as e:
     print (e)
     sys.exit(1)
 
 while True:
     try:
-        # Send data
-        data = sock.recv(16)  #recieve image size 
-        print(data.decode())
-        sock.sendall("got size".encode())
+         # Recieve size then image from server
+        data = sock.recv(8)  #recieve image size 
         
-        # if str(data).startswith("Size"):
-        imgSize = data.split()[1]
-        data = sock.recv(int(imgSize.decode()))  #recieve img from server
-        while len(data) < int(imgSize.decode()):
-            data += sock.recv(int(imgSize.decode()))
+        imgSize = int(data.decode())
+        print(imgSize)
+        sock.sendall('got size'.encode())
 
+        data = sock.recv(imgSize)  #recieve img from server
+        while len(data) < imgSize:
+            data += sock.recv(imgSize)
 
-        sock.sendall("got image".encode()) #send confirmation
-
-        #
         #send annotated image size and bytes
-        annImgBytes = add_caption(data)
-        print(len(np.frombuffer(annImgBytes,dtype=np.uint8)))
-        annImgSize = len(annImgBytes)
+        text = generate_text(data)
+        
+        # print(len(np.frombuffer(annImgBytes,dtype=np.uint8)))
+        sock.sendall('c'.encode())
+        print("c")
+        sock.sendall(str(len(text)).encode())
+        print(len(text))
+        data = sock.recv(16)
+        sock.sendall(text.encode())
 
-        msg = "Size %d" % annImgSize
-        print(msg)
-        sock.sendall(msg.encode())
-
-        data = sock.recv(16) # confirmation that img size was recieved
-        print(data.decode())
-
-        sock.sendall(annImgBytes)
-
-        data = sock.recv(16) # confirmation that img was recieved
-        print(data.decode())
-            
 
 
     finally:

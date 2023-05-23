@@ -48,11 +48,11 @@ def mask_image (imageBytes):
     np_image_string = np.array([imageBytes])
     height, width = img.shape[0:2]
 
-
+    print("running model")
     num_detections, detection_boxes, detection_classes, detection_scores, detection_masks, detection_outer_boxes, image_info = session.run(
         ['NumDetections:0', 'DetectionBoxes:0', 'DetectionClasses:0', 'DetectionScores:0', 'DetectionMasks:0', 'DetectionOuterBoxes:0', 'ImageInfo:0'],
         feed_dict={'Placeholder:0': np_image_string})
-
+    
     num_detections = np.squeeze(num_detections.astype(np.int32), axis=(0,))
     detection_boxes = np.squeeze(detection_boxes / min(image_info[0, 2]), axis=(0,))[0:num_detections]
     detection_outer_boxes = np.squeeze(detection_outer_boxes / min(image_info[0, 2]), axis=(0,))[0:num_detections]
@@ -76,22 +76,27 @@ def mask_image (imageBytes):
     detection_classes= detection_classes[filter_arr]
     detection_scores = detection_scores[filter_arr]
     segmentations = segmentations[filter_arr]
-
-
-    image = img.copy()
-    image = cv2.rectangle(image, (int(width*0.75),int(height*0.5)), (width,int(height*0.9)), (0,0,255,255), -1) #filled rect 
+    
+    
+    drawing = np.zeros((height,width),dtype = np.uint8) #black background
+    drawing = cv2.rectangle(drawing, (int(width*0.75),int(height*0.5)), (width,int(height*0.9)), 255, -1) #white filled rect 
 
     
-    mask = cv2.bitwise_or(segmentations[0].reshape(height,width,1),segmentations[1].reshape(height,width,1))
-    mask = cv2.convertScaleAbs(mask, alpha=255, beta=0)  
+    person = cv2.bitwise_or(segmentations[0].reshape(height,width,1),segmentations[1].reshape(height,width,1))
+    ##segmentations is represented by 1's & 0's but for bitwise or need 0XFF --> scale by 255
+    person = cv2.convertScaleAbs(person, alpha=255, beta=0)  
+    
+    mask = cv2.subtract(drawing,person)
+    
+    # person = cv2.bitwise_and(img, img, mask=mask) #mask of person
+    # inversion = cv2.bitwise_and(image, image, mask=cv2.bitwise_not(mask)) #picture w/ drawing w/o person
+    # masked = cv2.bitwise_or(person, inversion)
 
-    person = cv2.bitwise_and(img, img, mask=mask) #mask of person
-    inversion = cv2.bitwise_and(image, image, mask=cv2.bitwise_not(mask)) #picture w/ drawing w/o person
-    masked = cv2.bitwise_or(person, inversion)
 
+    ##return drawn object - person  --> new mask
     #cv2.imwrite(output_image_path, masked)
 
-    return cv2.imencode('.png', masked)[1].tobytes()
+    return cv2.imencode('.png', mask)[1].tobytes()
 
 
 
@@ -107,38 +112,32 @@ except socket.error as e:
 
 while True:
     try:
-        # Send data
-        data = sock.recv(16)  #recieve image size 
+         # Recieve size then image from server
+        data = sock.recv(8)  #recieve image size 
         print(data.decode())
-        sock.sendall("got size".encode())
+        imgSize = int(data.decode())
         
-        # if str(data).startswith("Size"):
-        imgSize = data.split()[1]
-        data = sock.recv(int(imgSize.decode()))  #recieve img from server
-        while len(data) < int(imgSize.decode()):
-            data += sock.recv(int(imgSize.decode()))
+        sock.sendall('got size'.encode())
 
-
-        sock.sendall("got image".encode()) #send confirmation
-
-        #
+        data = sock.recv(imgSize)  #recieve img from server
+        while len(data) < imgSize:
+            data += sock.recv(imgSize)
         #send annotated image size and bytes
         annImgBytes = mask_image(data)
-        print(len(np.frombuffer(annImgBytes,dtype=np.uint8)))
+        print("done masking")
+        # print(len(np.frombuffer(annImgBytes,dtype=np.uint8)))
         annImgSize = len(annImgBytes)
 
-        msg = "Size %d" % annImgSize
-        print(msg)
-        sock.sendall(msg.encode())
+        sock.sendall('m'.encode())
+        print('m')
 
-        data = sock.recv(16) # confirmation that img size was recieved
-        print(data.decode())
+        msg = str(annImgSize)
+        sock.sendall(msg.encode())
+        print(msg)
+
+        data = sock.recv(16)
 
         sock.sendall(annImgBytes)
-
-        data = sock.recv(16) # confirmation that img was recieved
-        print(data.decode())
-            
 
 
     finally:

@@ -30,37 +30,31 @@ except socket.error as e:
 
 while True:
     try:
-        # Send data
-        data = sock.recv(16)  #recieve image size 
-        print(data.decode())
-        sock.sendall("got size".encode())
-        
-        # if str(data).startswith("Size"):
-        imgSize = data.split()[1]
-        data = sock.recv(int(imgSize.decode()))  #recieve img from server
-        while len(data) < int(imgSize.decode()):
-            data += sock.recv(int(imgSize.decode()))
+        # Recieve size then image from server
+        data = sock.recv(4096)  #recieve image size 
+        imBytes = data
+        while(len(data)!=0):
+            data = sock.recv(4096)  #recieve image size 
+            imBytes+=data
 
+        # imgSize = int(data.decode())
+        # print(imgSize)
+        # data = sock.recv(imgSize)  #recieve img from server
+        # while len(data) < imgSize:
+        #     data += sock.recv(imgSize)
 
-        sock.sendall("got image".encode()) #send confirmation
-
-        #
         #send annotated image size and bytes
-        annImgBytes = annotate(data)
-        print(len(np.frombuffer(annImgBytes,dtype=np.uint8)))
+        annImgBytes = annotate(imBytes)
+        # print(len(np.frombuffer(annImgBytes,dtype=np.uint8)))
         annImgSize = len(annImgBytes)
 
-        msg = "Size %d" % annImgSize
+        msg = str(annImgSize)
+        while (len(msg)<8):
+            msg = '0'+msg
         print(msg)
         sock.sendall(msg.encode())
 
-        data = sock.recv(16) # confirmation that img size was recieved
-        print(data.decode())
-
         sock.sendall(annImgBytes)
-
-        data = sock.recv(16) # confirmation that img was recieved
-        print(data.decode())
             
 
 
