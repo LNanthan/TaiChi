@@ -8,6 +8,8 @@ import time
 import csv
 
 def add_caption (caption,img):
+    if caption == None:
+        return img
     imHeight, imWidth = img.shape[0:2]
 
     font = cv2.FONT_HERSHEY_DUPLEX
@@ -25,6 +27,30 @@ def add_caption (caption,img):
                    fontscale, color, thickness, cv2.LINE_AA)
 
     return img
+
+def skeleton(img,pts_3d):
+    orig = img.copy()
+    joints = [[]]*4
+    joints[0] = [4,3,2,1,5,6,7] #arms
+    joints[1] = [23,22,11,24,11,10,9,8,12,13,14,21,14,19,20] #legs  #[11,10,9,8,12,13,14]
+    joints[2] = [1,8] #torso
+    for r in joints:
+        start = 0
+        for i in r:
+            if(start==0 and pts_3d[i][0]>=0):
+                start_pt = (int(pts_3d[i][0]),int(pts_3d[i][1]))
+                start = 1
+            elif(pts_3d[i][0]>=0):
+                end_pt = (int(pts_3d[i][0]),int(pts_3d[i][1]))
+                img = cv2.line(img, start_pt, end_pt, color=(200, 200, 0,180), thickness=9)  
+                img = cv2.circle(img, start_pt, radius=8, color=(255, 255, 255,180), thickness=-1)
+                start_pt = end_pt
+            img = cv2.circle(img, start_pt, radius=8, color=(255, 255, 255,180), thickness=-1)
+    img = cv2.addWeighted(orig,0.35,img,0.65,0.0)
+    return img
+
+
+
 count = 0
 caption_size = 20
 server_address = './uds_socket'
@@ -32,8 +58,10 @@ server_address = './uds_socket'
 
 vidcap = cv2.VideoCapture('11_forms_demo_4min.mp4')
 success,img = vidcap.read()
+for i in range (0,3100):
+    success,img = vidcap.read()
 # success = True
-result = cv2.VideoWriter('newVid.avi',  cv2.VideoWriter_fourcc(*'MJPG'), 30, (img.shape[1],img.shape[0]))
+result = cv2.VideoWriter('skel_opv2.mp4',  cv2.VideoWriter_fourcc(*'mp4v'), 20, (img.shape[1],img.shape[0]))
 
 try:
     os.unlink(server_address)
@@ -48,7 +76,7 @@ frames = int(sys.argv[1])
 print(frames)
 sock.listen(1)
 print("listening")
-clients = 2 
+clients = 1 
 connec = []
 for i in range(0,clients):
     # Wait for a connection from all clients
@@ -60,10 +88,12 @@ while True:
     try:
         count+=1
         success,img = vidcap.read()
+        caption = None
         imageBytes = cv2.imencode('.png', img)[1].tobytes()
         imageSize = len(imageBytes)
         
         msg = str(imageSize)
+        print(msg)
 
         for i in range (0,len(connec)):
             connec[i].sendall(msg.encode())
@@ -76,11 +106,9 @@ while True:
             size = int(connec[i].recv(8).decode())
             if (id.decode() =='m'): #m = mask; expecting new image
                 connec[i].sendall("got size".encode())
-                
-                data = connec[i].recv(size)  #recieve img from server
+                data = connec[i].recv(size)  #recieve img from serve
                 while len(data) < size:
                     data += connec[i].recv(size)
-
                 maskArr = np.frombuffer(data,dtype=np.uint8)
                 mask = cv2.imdecode(maskArr,cv2.IMREAD_UNCHANGED)
                 drawing = img.copy()
@@ -88,13 +116,26 @@ while True:
                 object = cv2.bitwise_and(drawing, drawing, mask=mask) 
                 inversion = cv2.bitwise_and(img, img, mask=cv2.bitwise_not(mask)) 
                 img = cv2.bitwise_or(object, inversion)
+
             elif (id.decode() =='c'): #c = caption
                 connec[i].sendall("got size".encode())
                 data = connec[i].recv(size)  #recieve img from server
-                
                 while len(data) < size:
                     data += connec[i].recv(size)
-                img = add_caption(data.decode(),img)
+                caption = data.decode()
+
+            elif (id.decode() =='h'): #h = hpe
+                connec[i].sendall("got size".encode())
+                data = connec[i].recv(size)  #recieve img from server
+                while len(data) < size:
+                    data += connec[i].recv(size)
+                pts_3d = np.frombuffer(data)
+                pts_3d = pts_3d.reshape(25,2)
+                img = skeleton(img,pts_3d)
+
+        img = add_caption(caption,img)
+
+        result.write(img)
             
   
 
@@ -113,8 +154,7 @@ while True:
         
 
 vidcap.release()
+result.release()
+# cv2.imwrite("skeletonOP2.jpg",img)
 end = time.time()
-f = open('times','a+')
-writer = csv.writer(f)
-writer.writerow(['A',frames,end-start])
 print(end-start)

@@ -79,7 +79,7 @@ def mask_image (imageBytes):
     
     
     drawing = np.zeros((height,width),dtype = np.uint8) #black background
-    drawing = cv2.rectangle(drawing, (int(width*0.75),int(height*0.5)), (width,int(height*0.9)), 255, -1) #white filled rect 
+    drawing = cv2.rectangle(drawing, (int(width*0.45),int(height*0.5)), (int(width*0.9),int(height*0.9)), 255, -1) #white filled rect 
 
     
     person = cv2.bitwise_or(segmentations[0].reshape(height,width,1),segmentations[1].reshape(height,width,1))

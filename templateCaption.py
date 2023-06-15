@@ -37,9 +37,19 @@ def generate_text(imageBytes):
   return caption
 
 
-server_address = './uds_socket'
+render_address = './uds_render'
+try:
+    os.unlink(render_address)
+except OSError:
+    if os.path.exists(render_address):
+        raise
+
 # Create a UDS socket
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock.bind(render_address)
+
+server_address = './uds_socket'
+
 
 try:
     sock.connect(server_address)
@@ -52,9 +62,8 @@ while True:
     try:
          # Recieve size then image from server
         data = sock.recv(8)  #recieve image size 
-        
+        print(data.decode())
         imgSize = int(data.decode())
-        print(imgSize)
         sock.sendall('got size'.encode())
 
         data = sock.recv(imgSize)  #recieve img from server
