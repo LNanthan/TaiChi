@@ -4,7 +4,8 @@ import os
 from PIL import Image
 import cv2
 import numpy as np
-
+import time
+import csv
 
 def add_caption (caption,img):
     imHeight, imWidth = img.shape[0:2]
@@ -43,7 +44,8 @@ except OSError:
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 sock.bind(server_address)
 
-
+frames = int(sys.argv[1])
+print(frames)
 sock.listen(1)
 print("listening")
 clients = 2 
@@ -53,13 +55,8 @@ for i in range(0,clients):
     connection, client_address1 = sock.accept()
     connec.append(connection)
     print(connec)
-
-        
-
-
-
+start = time.time()
 while True:
-  
     try:
         count+=1
         success,img = vidcap.read()
@@ -75,10 +72,8 @@ while True:
             connec[i].sendall(imageBytes)
 
         for i in range (0,len(connec)):
-            print(connec[i])
             id = connec[i].recv(1)
             size = int(connec[i].recv(8).decode())
-            print(id," ",size)
             if (id.decode() =='m'): #m = mask; expecting new image
                 connec[i].sendall("got size".encode())
                 
@@ -101,19 +96,25 @@ while True:
                     data += connec[i].recv(size)
                 img = add_caption(data.decode(),img)
             
-        cv2.imshow("window",img)
-        cv2.waitKey(0)
-        print(count)
-        if(count==1):
-            for i in range (0,len(connec)):
-                connec[i].sendall("close socket".encode())
-            break
-        else:
-            for i in range (0,len(connec)):
-                connec[i].sendall("...".encode())
-            continue       
+  
+
     finally:
         # Clean up the connection
-         for i in range (0,len(connec)):
-            connec[i].close()
+         print(count)
+         if(count==frames):
+            for i in range (0,len(connec)):
+                connec[i].sendall("close socket".encode()) #send confirmation
+                connec[i].close()
+            break
+                
+         else:
+            for i in range (0,len(connec)):
+                connec[i].sendall("keep open".encode()) #send confirmation
         
+
+vidcap.release()
+end = time.time()
+f = open('times','a+')
+writer = csv.writer(f)
+writer.writerow(['A',frames,end-start])
+print(end-start)
