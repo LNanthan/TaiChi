@@ -4,6 +4,8 @@ import os
 from PIL import Image
 import cv2 
 import numpy as np
+import time
+import csv
 
 count = 0
 server_address = './uds_socket'
@@ -12,7 +14,7 @@ server_address = './uds_socket'
 vidcap = cv2.VideoCapture('11_forms_demo_4min.mp4')
 success,img = vidcap.read()
 # success = True
-result = cv2.VideoWriter('newVid.avi',  cv2.VideoWriter_fourcc(*'MJPG'), 30, (img.shape[1],img.shape[0]))
+#result = cv2.VideoWriter('newVid.avi',  cv2.VideoWriter_fourcc(*'MJPG'), 30, (img.shape[1],img.shape[0]))
 
 try:
     os.unlink(server_address)
@@ -27,60 +29,54 @@ sock.bind(server_address)
 sock.listen(1)
 
 connection, client_address = sock.accept()
-
+start = time.time()
+frames = int(sys.argv[1])
 while True:
-    # Wait for a connection
-    
+
     try:
         count+=1
         success,img = vidcap.read()
         imageBytes = cv2.imencode('.png', img)[1].tobytes()
         imageSize = len(imageBytes)
-
-
-        msg = "Size %d" % imageSize
    
-        connection.sendall(msg.encode())
-        print(msg)
+        connection.sendall(str(imageSize).encode())
+        print(imageSize)
         
         data = connection.recv(16) # confirmation that img size was recieved
         print(data.decode())
         
         connection.sendall(imageBytes)
-
-        data = connection.recv(16) # confirmation that img was recieved
-        print(data.decode())
         
-
         #recieve new img
         data = connection.recv(16) # new img size
         print(data.decode())
+
         connection.sendall("got new size".encode())
+        newImgSize = int(data.decode())
 
-        # if str(data).startswith("Size"):
-        annImgSize = data.split()[1]
-
-        data = connection.recv(int(annImgSize.decode()))  #recieve new img
-        while len(data) < int(annImgSize.decode()):
-            data += connection.recv(int(annImgSize.decode()))
+        data = connection.recv(newImgSize)  #recieve new img
+        while len(data) < newImgSize:
+            data += connection.recv(newImgSize)
         newImgArr = np.frombuffer(data,dtype=np.uint8)
+
     #  print(len(newImgArr))
         newImg = cv2.imdecode(newImgArr,cv2.IMREAD_UNCHANGED)
     
-        connection.sendall("got new image".encode()) #send confirmation
+        # connection.sendall("got new image".encode()) #send confirmation
 
-        result.write(newImg)
+     #   result.write(newImg)
 
         #show live video
-        cv2.imshow("window",newImg)
-        cv2.waitKey(1)
+        print(count)
+        # cv2.imshow("window",newImg)
+        # cv2.waitKey(1)
 
         
 
             
     finally:
         # Clean up the connection
-        if(count==90):
+        if(count==frames):
             connection.sendall("close socket".encode()) #send confirmation
             connection.close()
             break
@@ -89,4 +85,9 @@ while True:
         
         
 vidcap.release()
-result.release()
+# result.release()
+end = time.time()
+f = open('times','a+')
+writer = csv.writer(f)
+writer.writerow(['B',frames,end-start])
+print(end-start)

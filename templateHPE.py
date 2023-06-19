@@ -15,11 +15,6 @@ import matplotlib.pyplot as plt
 import json
 
 
-#print(sys.path)
-
-shoulder_r = 12
-shoulder_l = 14
-
 
 def get_kpts(img):
 
@@ -38,7 +33,8 @@ def get_kpts(img):
     os.chdir(os.path.join(curr_dir,"openpose"))  #chdir to the openpose file
 
     #--display 0 and --render_pose 0 saves time
-    p = subprocess.call(['./build/examples/openpose/openpose.bin', '--image_dir', '../data/images/', '--write_json', '../data/annots/', '--display', '0', '--render_pose', '0'])
+    p = subprocess.call(['./build/examples/openpose/openpose.bin', '--image_dir', '../data/images/', '--write_json', '../data/annots/', 
+                         '--display', '0', '--render_pose', '0','--net_resolution','-1x368'])
 
     os.chdir(curr_dir) #change back to main dir
     end = time.time()
@@ -52,23 +48,14 @@ def get_kpts(img):
     return kpts
 
 
-##real person is closer to camera so joint length would be bigger
-#compare distance from
+#limb lengths vary based on current pose -- the arm is not always larger in the real kpts
+#so instead the leftmost joints correspond to the mirror person
 def measureJoint(kpts1, kpts2):
-    # l1 = kpts1[shoulder_l] - kpts1[shoulder_r]
-    # l2 = kpts2[shoulder_l] - kpts2[shoulder_r]
-
-    # mag1 = np.linalg.norm(l1[0:2])
-    # mag2 = np.linalg.norm(l2[0:2])
     if(kpts1[1][0]>kpts2[1][0]):
         return kpts1,kpts2
     else:
         return kpts2,kpts1
 
-    # if(mag1>mag2):
-    #     return kpts1,kpts2
-    # else:
-    #     return kpts2,kpts1
 
 
 def matchKpts(mirror_img):
@@ -110,7 +97,7 @@ def get3D (real_kpts,mirror_kpts):
     points_3D = np.transpose(points_3D)
 
     for i in range(0,len(real_kpts)):
-        if real_kpts[i][2]==0:
+        if real_kpts[i][2]<=0.3:
             real_projected[i]=[-1,-1]  #kpts w/ confidence of 0 will be negative so it's not drawn on
 
     return real_projected

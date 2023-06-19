@@ -17,9 +17,10 @@ from utils.object_detection import visualization_utils
 from evaluation import coco_utils
 from google.cloud import storage
 
+# gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
+# session = tf.Session(graph=tf.Graph(),config=tf.ConfigProto(gpu_options=gpu_options))
 
 session = tf.Session(graph=tf.Graph())
-#output_image_path = 'maskImage.png'
 
 storage_client = storage.Client.create_anonymous_client()
 bucket = storage_client.bucket("cloud-tpu-checkpoints")
@@ -38,7 +39,9 @@ if not os.path.exists("shapemask/variables"):
     blob.download_to_filename("shapemask/variables/variables.index")
 
 saved_model_dir = 'shapemask' #@param {type:"string"}
-_ = tf.saved_model.load(session, ['serve'], saved_model_dir)
+_ = tf.saved_model.load(session,['serve'] ,saved_model_dir)
+print(tf.config.list_physical_devices('GPU'))
+
 
 
 def mask_image (imageBytes):
@@ -66,7 +69,7 @@ def mask_image (imageBytes):
 
     filter_arr = []
     for c in detection_classes:
-        if c == 1:
+        if c == 1:  #class 1 --> person
             filter_arr.append(True)
         else:
             filter_arr.append(False)
@@ -75,26 +78,23 @@ def mask_image (imageBytes):
     detection_boxes = detection_boxes[filter_arr]
     detection_classes= detection_classes[filter_arr]
     detection_scores = detection_scores[filter_arr]
-    segmentations = segmentations[filter_arr]
+    segmentations = segmentations[filter_arr]   #segmentations is an array of 1's & 0's denoting where the person is in the img
     
     
-    drawing = np.zeros((height,width),dtype = np.uint8) #black background
-    drawing = cv2.rectangle(drawing, (int(width*0.45),int(height*0.5)), (int(width*0.9),int(height*0.9)), 255, -1) #white filled rect 
+
+    #replace with clock
+    drawing = cv2.rectangle(drawing, (int(width*0.45),int(height*0.5)), (int(width*0.9),int(height*0.9)), 255, -1) #red filled rect 
 
     
     person = cv2.bitwise_or(segmentations[0].reshape(height,width,1),segmentations[1].reshape(height,width,1))
-    ##segmentations is represented by 1's & 0's but for bitwise or need 0XFF --> scale by 255
+
+
+    ##segmentations is represented by 1's & 0's but for bitwise_or need 0XFF --> scale by 255
     person = cv2.convertScaleAbs(person, alpha=255, beta=0)  
     
     mask = cv2.subtract(drawing,person)
-    
-    # person = cv2.bitwise_and(img, img, mask=mask) #mask of person
-    # inversion = cv2.bitwise_and(image, image, mask=cv2.bitwise_not(mask)) #picture w/ drawing w/o person
-    # masked = cv2.bitwise_or(person, inversion)
 
 
-    ##return drawn object - person  --> new mask
-    #cv2.imwrite(output_image_path, masked)
 
     return cv2.imencode('.png', mask)[1].tobytes()
 
@@ -125,7 +125,7 @@ while True:
         #send annotated image size and bytes
         annImgBytes = mask_image(data)
         print("done masking")
-        # print(len(np.frombuffer(annImgBytes,dtype=np.uint8)))
+
         annImgSize = len(annImgBytes)
 
         sock.sendall('m'.encode())

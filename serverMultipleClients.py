@@ -40,12 +40,14 @@ def skeleton(img,pts_3d):
             if(start==0 and pts_3d[i][0]>=0):
                 start_pt = (int(pts_3d[i][0]),int(pts_3d[i][1]))
                 start = 1
+                
             elif(pts_3d[i][0]>=0):
                 end_pt = (int(pts_3d[i][0]),int(pts_3d[i][1]))
                 img = cv2.line(img, start_pt, end_pt, color=(200, 200, 0,180), thickness=9)  
                 img = cv2.circle(img, start_pt, radius=8, color=(255, 255, 255,180), thickness=-1)
                 start_pt = end_pt
-            img = cv2.circle(img, start_pt, radius=8, color=(255, 255, 255,180), thickness=-1)
+        if(start==1):   
+            img = cv2.circle(img, start_pt, radius=8, color=(255, 255, 255,180), thickness=-1)  #draw last joint 
     img = cv2.addWeighted(orig,0.35,img,0.65,0.0)
     return img
 
@@ -58,10 +60,10 @@ server_address = './uds_socket'
 
 vidcap = cv2.VideoCapture('11_forms_demo_4min.mp4')
 success,img = vidcap.read()
-for i in range (0,3100):
+for i in range (0,3169):
     success,img = vidcap.read()
 # success = True
-result = cv2.VideoWriter('skel_opv2.mp4',  cv2.VideoWriter_fourcc(*'mp4v'), 20, (img.shape[1],img.shape[0]))
+result = cv2.VideoWriter('mask_0.2_GPU_restric.mp4',  cv2.VideoWriter_fourcc(*'mp4v'), 20, (img.shape[1],img.shape[0]))
 
 try:
     os.unlink(server_address)
@@ -135,7 +137,7 @@ while True:
 
         img = add_caption(caption,img)
 
-        result.write(img)
+        #result.write(img)
             
   
 
@@ -155,6 +157,6 @@ while True:
 
 vidcap.release()
 result.release()
-# cv2.imwrite("skeletonOP2.jpg",img)
+cv2.imwrite("maskperson.jpg",img)
 end = time.time()
 print(end-start)
