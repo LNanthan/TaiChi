@@ -107,10 +107,19 @@ def get3D (real_kpts,mirror_kpts):
 
 
 
+server_address = './uds_socket'
+skeleton_address = './uds_skeleton'
+
+try:
+    os.unlink(skeleton_address)
+except OSError:
+    if os.path.exists(skeleton_address):
+        raise
 
 # Create a UDS socket
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-server_address = './uds_socket'
+sock.bind(skeleton_address)
+
 
 try:
     sock.connect(server_address)

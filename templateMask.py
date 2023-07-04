@@ -99,9 +99,18 @@ def mask_image (imageBytes):
     return cv2.imencode('.png', mask)[1].tobytes()
 
 
-
 server_address = './uds_socket'
+mask_address = './uds_mask'
+
+try:
+    os.unlink(mask_address)
+except OSError:
+    if os.path.exists(mask_address):
+        raise
+
+# Create a UDS socket
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock.bind(mask_address)
 
 try:
     sock.connect(server_address)

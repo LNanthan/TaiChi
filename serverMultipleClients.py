@@ -60,10 +60,10 @@ server_address = './uds_socket'
 
 vidcap = cv2.VideoCapture('11_forms_demo_4min.mp4')
 success,img = vidcap.read()
-for i in range (0,3169):
+for i in range (0,3100):
     success,img = vidcap.read()
 # success = True
-result = cv2.VideoWriter('mask_0.2_GPU_restric.mp4',  cv2.VideoWriter_fourcc(*'mp4v'), 20, (img.shape[1],img.shape[0]))
+result = cv2.VideoWriter('capv2_test.mp4',  cv2.VideoWriter_fourcc(*'mp4v'), 20, (img.shape[1],img.shape[0]))
 
 try:
     os.unlink(server_address)
@@ -86,21 +86,25 @@ for i in range(0,clients):
     connec.append(connection)
     print(connec)
 start = time.time()
+import select
 while True:
     try:
+        
         count+=1
         success,img = vidcap.read()
         caption = None
         imageBytes = cv2.imencode('.png', img)[1].tobytes()
-        imageSize = len(imageBytes)
-        
-        msg = str(imageSize)
-        print(msg)
+        size_msg = str(len(imageBytes))
+
+        while(len(size_msg)<8):
+            size_msg ='0' + size_msg
+            
+        print(size_msg)
 
         for i in range (0,len(connec)):
-            connec[i].sendall(msg.encode())
-            data = connec[i].recv(16) # confirmation that img size was recieved
-            print(data.decode())
+            connec[i].sendall(size_msg.encode())
+           # data = connec[i].recv(16) # confirmation that img size was recieved
+           # print(data.decode())
             connec[i].sendall(imageBytes)
 
         for i in range (0,len(connec)):
@@ -137,7 +141,7 @@ while True:
 
         img = add_caption(caption,img)
 
-        #result.write(img)
+        result.write(img)
             
   
 
@@ -146,17 +150,16 @@ while True:
          print(count)
          if(count==frames):
             for i in range (0,len(connec)):
-                connec[i].sendall("close socket".encode()) #send confirmation
+                connec[i].sendall("close...".encode()) #send confirmation
                 connec[i].close()
             break
                 
          else:
             for i in range (0,len(connec)):
-                connec[i].sendall("keep open".encode()) #send confirmation
+                connec[i].sendall("keepOpen".encode()) #send confirmation
         
 
 vidcap.release()
 result.release()
-cv2.imwrite("maskperson.jpg",img)
 end = time.time()
 print(end-start)

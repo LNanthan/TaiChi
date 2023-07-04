@@ -36,19 +36,20 @@ def generate_text(imageBytes):
   caption = "placeholder"
   return caption
 
+server_address = './uds_socket'
+caption_address = './uds_caption'
 
-render_address = './uds_render'
 try:
-    os.unlink(render_address)
+    os.unlink(caption_address)
 except OSError:
-    if os.path.exists(render_address):
+    if os.path.exists(caption_address):
         raise
 
 # Create a UDS socket
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-sock.bind(render_address)
+sock.bind(caption_address)
 
-server_address = './uds_socket'
+
 
 
 try:
@@ -63,17 +64,24 @@ while True:
          # Recieve size then image from server
         data = sock.recv(8)  #recieve image size 
         print(data.decode())
-        imgSize = int(data.decode())
-        sock.sendall('got size'.encode())
+        sizeStr = data.decode()
+
+        while(sizeStr[0]=='0'):
+            sizeStr = sizeStr[1:]
+
+        imgSize = int(sizeStr)
+        # sock.sendall('got size'.encode())
 
         data = sock.recv(imgSize)  #recieve img from server
         while len(data) < imgSize:
-            data += sock.recv(imgSize)
+            print(len(data))
+            data += sock.recv(imgSize-len(data))
 
         #send annotated image size and bytes
         text = generate_text(data)
         
         # print(len(np.frombuffer(annImgBytes,dtype=np.uint8)))
+        print("--"+ str(imgSize-len(data)))
         sock.sendall('c'.encode())
         print("c")
         sock.sendall(str(len(text)).encode())
@@ -84,8 +92,9 @@ while True:
 
 
     finally:
-        data = sock.recv(16)
-        if(data.decode()=="close socket"):
+        data = sock.recv(8)
+        print(data)
+        if(data.decode()=="close..."):
             print ('closing socket')
             sock.close()
             break
