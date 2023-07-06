@@ -17,10 +17,9 @@ from utils.object_detection import visualization_utils
 from evaluation import coco_utils
 from google.cloud import storage
 
-# gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
-# session = tf.Session(graph=tf.Graph(),config=tf.ConfigProto(gpu_options=gpu_options))
+gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
+session = tf.Session(graph=tf.Graph(),config=tf.ConfigProto(gpu_options=gpu_options))
 
-session = tf.Session(graph=tf.Graph())
 
 storage_client = storage.Client.create_anonymous_client()
 bucket = storage_client.bucket("cloud-tpu-checkpoints")
@@ -83,6 +82,7 @@ def mask_image (imageBytes):
     
 
     #replace with clock
+    drawing = np.zeros((height,width),dtype = np.uint8) #black background
     drawing = cv2.rectangle(drawing, (int(width*0.45),int(height*0.5)), (int(width*0.9),int(height*0.9)), 255, -1) #red filled rect 
 
     
@@ -99,8 +99,8 @@ def mask_image (imageBytes):
     return cv2.imencode('.png', mask)[1].tobytes()
 
 
-server_address = './uds_socket'
-mask_address = './uds_mask'
+server_address = './uds_server'
+mask_address = './uds_clock'
 
 try:
     os.unlink(mask_address)
@@ -112,8 +112,10 @@ except OSError:
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 sock.bind(mask_address)
 
+close = False
 try:
     sock.connect(server_address)
+    print('connected')
 except socket.error as e:
     print (e)
     sys.exit(1)
@@ -122,36 +124,51 @@ except socket.error as e:
 while True:
     try:
          # Recieve size then image from server
-        data = sock.recv(8)  #recieve image size 
-        print(data.decode())
-        imgSize = int(data.decode())
-        
-        sock.sendall('got size'.encode())
-
-        data = sock.recv(imgSize)  #recieve img from server
-        while len(data) < imgSize:
-            data += sock.recv(imgSize)
-        #send annotated image size and bytes
-        annImgBytes = mask_image(data)
-        print("done masking")
-
-        annImgSize = len(annImgBytes)
-
-        sock.sendall('m'.encode())
-        print('m')
-
-        msg = str(annImgSize)
-        sock.sendall(msg.encode())
-        print(msg)
-
         data = sock.recv(16)
+        if(data.decode() == 'close socket....'):
+            close = True
+            break
+        f_num_msg = data
+        f_num = f_num_msg.decode()
+        while(f_num[0]=='0'):
+            f_num = f_num[1:]
+        print(f_num)
 
-        sock.sendall(annImgBytes)
+        size = sock.recv(8).decode()
+        while(size[0]=='0'):
+            size = size[1:]
+        size=int(size)
+
+        data_id = sock.recv(1)
+
+        frame = sock.recv(size)  #recieve img from server
+        while len(frame) < size:
+            frame += sock.recv(size-len(frame))
+
+        annImgBytes = mask_image(frame)
+
+        #send back to server(which sends to render) using this format:
+        # sizeOfRenderMsg(8) renderMsg(sizeOfRenderMsg)
+        #renderMsg: frameNum(16) sizeOfData(8) data(sizeOfData)  *character id should be prepended to data
+    
+        renderMsg = f_num_msg
+        sizeData = str(len(annImgBytes))
+        while(len(sizeData)<8):
+            sizeData ='0' + sizeData
+        renderMsg+= sizeData.encode()
+        renderMsg+='m'.encode()
+        renderMsg += annImgBytes
+
+        sizeRenderMsg = str(len(renderMsg))
+        while(len(sizeRenderMsg)<8):
+            sizeRenderMsg ='0' + sizeRenderMsg
+
+        sock.sendall(sizeRenderMsg.encode())
+        sock.sendall(renderMsg)
 
 
     finally:
-        data = sock.recv(16)
-        if(data.decode()=="close socket"):
+        if(close==True):
             print ('closing socket')
             sock.close()
             break

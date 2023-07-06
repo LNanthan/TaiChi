@@ -107,7 +107,7 @@ def get3D (real_kpts,mirror_kpts):
 
 
 
-server_address = './uds_socket'
+server_address = './uds_server'
 skeleton_address = './uds_skeleton'
 
 try:
@@ -119,7 +119,7 @@ except OSError:
 # Create a UDS socket
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 sock.bind(skeleton_address)
-
+close = False
 
 try:
     sock.connect(server_address)
@@ -131,41 +131,63 @@ except socket.error as e:
 while True:
     try:
          # Recieve size then image from server
-        data = sock.recv(8)  #recieve image size 
-        
-        imgSize = int(data.decode())
-        print(imgSize)
-        sock.sendall('got size'.encode())
+        data = sock.recv(16)
+        if(data.decode() == 'close socket....'):
+            close = True
+            break
+        f_num_msg = data
+        f_num = f_num_msg.decode()
+        while(f_num[0]=='0'):
+            f_num = f_num[1:]
+        print(f_num)
 
-        data = sock.recv(imgSize)  #recieve img from server
-        while len(data) < imgSize:
-            data += sock.recv(imgSize)
+        size = sock.recv(8).decode()
+        while(size[0]=='0'):
+            size = size[1:]
+        size=int(size)
+
+        data_id = sock.recv(1)
+
+        frame = sock.recv(size)  #recieve img from server
+        while len(frame) < size:
+            frame += sock.recv(size-len(frame))
 
         #send 3d kpts size and data
-        imgArr = np.frombuffer(data,dtype=np.uint8)
+        imgArr = np.frombuffer(frame,dtype=np.uint8)
         img = cv2.imdecode(imgArr,cv2.IMREAD_UNCHANGED)
         keypoints = get_kpts(img)  #get 2D
         real,mirror = measureJoint(keypoints[0],keypoints[1])
         mirror = matchKpts(mirror)
         pts_3d = get3D(real,mirror)
         pts_3d_enc = pts_3d.tobytes()
-        pts_size = len(pts_3d_enc)
-        
-        # print(len(np.frombuffer(annImgBytes,dtype=np.uint8)))
-        sock.sendall('h'.encode())
-        print("h")
-        sock.sendall(str(pts_size).encode())
-        print(pts_size)
-        data = sock.recv(16)
-        sock.sendall(pts_3d_enc)
 
+
+
+        #send back to server(which sends to render) using this format:
+        # sizeOfRenderMsg(8) renderMsg(sizeOfRenderMsg)
+        #renderMsg: frameNum(16) sizeOfData(8) data(sizeOfData)  *character id should be prepended to data
+        renderMsg = f_num_msg
+        sizeData = str(len(pts_3d_enc))
+        while(len(sizeData)<8):
+            sizeData ='0' + sizeData
+        renderMsg+= sizeData.encode()
+        renderMsg+='h'.encode()
+        renderMsg += pts_3d_enc
+
+        sizeRenderMsg = str(len(renderMsg))
+        while(len(sizeRenderMsg)<8):
+            sizeRenderMsg ='0' + sizeRenderMsg
+
+        sock.sendall(sizeRenderMsg.encode())
+        sock.sendall(renderMsg)
+        
+    
 
 
     finally:
-        data = sock.recv(16)
-        print(data.decode())
-        if(data.decode()=="close socket"):
+        if(close==True):
             print ('closing socket')
             sock.close()
             break
+
 

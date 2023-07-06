@@ -15,11 +15,13 @@ class Frame:
         self.remaining = numMods
         self.img = img
         self.shape = img.shape
+
     def addMeeting(self, id):
         self.meetings[id] = [self.img,None]
-    def render (self, id, data):
-        if (data[0] =='m'): #m = mask; expecting new image
-            data = data[1:]
+
+    def render (self, id, data, data_id):
+        
+        if (data_id=='m'): #m = mask; expecting new image
             maskArr = np.frombuffer(data,dtype=np.uint8)
             mask = cv2.imdecode(maskArr,cv2.IMREAD_UNCHANGED)
             img = self.meetings[id][0]
@@ -29,11 +31,10 @@ class Frame:
             inversion = cv2.bitwise_and(img, img, mask=cv2.bitwise_not(mask)) 
             img = cv2.bitwise_or(object, inversion)
 
-        elif (data[0] =='c'): #c = caption
-            self.meetings[id][1] = data[1:] # store caption
+        elif (data_id =='c'): #c = caption
+            self.meetings[id][1] = data.decode() # store caption
         
-        elif (data[0] =='h'): #h = hpe
-            data = data[1:]
+        elif (data_id =='h'): #h = hpe
             pts_3d = np.frombuffer(data)
             pts_3d = pts_3d.reshape(25,2)
             img = self.meetings[id][0]
@@ -41,7 +42,7 @@ class Frame:
     def placeCaption(self,id):
         if not self.meetings[id][1] ==  None:
             img = self.meetings[id][0]
-            img = add_caption[img]
+            img = add_caption(self.meetings[id][1],img)
             
 
 
@@ -101,8 +102,9 @@ except OSError:
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 sock.bind(render_address)
 
+close = False
 ##connect to server as client
-server_address = './uds_socket'
+server_address = './uds_server'
 try:
     sock.connect(server_address)
 except socket.error as e:
@@ -115,65 +117,77 @@ frames = {}
    
 while True:
     try:
-        f_num = sock.recv(16)
+        data = sock.recv(16)
+        if(data.decode() == 'close socket....'):
+            close = True
+            break
+        f_num = data.decode()
         while(f_num[0]=='0'):
             f_num = f_num[1:]
+        print(f_num)
 
-        size = sock.recv(16)
+        size = sock.recv(8).decode()
         while(size[0]=='0'):
             size = size[1:]
+        size=int(size)
 
+        data_id = sock.recv(1).decode()
         data = sock.recv(size)  #recieve img from server
         while len(data) < size:
             data += sock.recv(size-len(data))
-        data = data.decode()
-        if data[0] == 'f':
+        
+        if data_id == 'f':
             imgArr = np.frombuffer(data,dtype=np.uint8)
             img = cv2.imdecode(imgArr,cv2.IMREAD_UNCHANGED)
             frames[f_num] = Frame(img)
         else:
-            size = sock.recv(16)
-            while(size[0]=='0'):
+            size = sock.recv(8).decode()
+            while(size[0]=='0'  and len(size)>1):
                 size = size[1:]
+            size=int(size)
             meetingInfo = sock.recv(size)  #recieve img from server
             while len(meetingInfo) < size:
                 meetingInfo += sock.recv(size-len(meetingInfo))
+            
             meetingInfo = meetingInfo.decode().split(',')[1:]  #the first character would be a comma in meetingInfo so first item in split would be ''
+            print(meetingInfo)
             for i in meetingInfo:
+                print(i)
                 #meeting exists
                 if i in frames[f_num].meetings:
-                    frames[f_num].render(i,data)
+                    frames[f_num].render(i,data,data_id)
                 else:
-                    frames[f_num].addMeetings[i]
-                    frames[f_num].render(i,data)
-                frames[f_num].remaining -= 1
-                if(frames[f_num].remaining == 0):
-                    for mid in  frames[f_num].meetings:
-                        #caption is added at the end so that it's not covered by the other annotations
-                        frames[f_num].placeCaption(mid)
-                        img = frames[f_num].meetings[mid][0]
-                        imgBytes = cv2.imencode('.png', img)[1].tobytes()
+                    frames[f_num].addMeeting(i)
+                    frames[f_num].render(i,data,data_id)
+            frames[f_num].remaining -= 1
+            if(frames[f_num].remaining == 0):
+                for mid in  frames[f_num].meetings:
+                    
+                    #caption is added at the end so that it's not covered by the other annotations
+                    frames[f_num].placeCaption(mid)
+                    img = frames[f_num].meetings[mid][0]
+                    imgBytes = cv2.imencode('.png', img)[1].tobytes()
 
-                        #send meeting id (4 bytes)
-                        id_msg = str(count)
-                        while(len(id_msg)<4):
-                            id_msg ='0' + id_msg
-                        sock.sendall(id_msg.encode())
+                    #send meeting id (4 bytes)
+                    id_msg = str(mid)
+                    while(len(id_msg)<4):
+                        id_msg ='0' + id_msg
+                    sock.sendall(id_msg.encode())
+                    print(id_msg)
 
-                        #send size of frame (16 bytes)
-                        size_msg = str(len(imgBytes))
-                        while(len(size_msg)<16):
-                            size_msg ='0' + size_msg
-                        sock.sendall(size_msg.encode())
+                    #send size of frame (16 bytes)
+                    size_msg = str(len(imgBytes))
+                    while(len(size_msg)<8):
+                        size_msg ='0' + size_msg
+                    sock.sendall(size_msg.encode())
+                    
 
-                        #send img bytes
-                        sock.sendall(imgBytes)
-            
+                    #send img bytes
+                    sock.sendall(imgBytes)
+        
         
     finally:
-        data = sock.recv(16)
-        print(data.decode())
-        if(data.decode()=="close socket"):
+        if(close==True):
             print ('closing socket')
             sock.close()
             break
