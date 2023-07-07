@@ -34,7 +34,7 @@ def get_kpts(img):
 
     #--display 0 and --render_pose 0 saves time
     p = subprocess.call(['./build/examples/openpose/openpose.bin', '--image_dir', '../data/images/', '--write_json', '../data/annots/', 
-                         '--display', '0', '--render_pose', '0','--net_resolution','-1x368'])
+                         '--display', '0', '--render_pose', '0','--net_resolution','-1x176'])
 
     os.chdir(curr_dir) #change back to main dir
     end = time.time()

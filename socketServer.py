@@ -22,7 +22,7 @@ meetings = {}
 class Meeting:
     def __init__(self,id):
         self.config = {"skeleton": False, "caption": False, "clock":False}
-        self.output= cv2.VideoWriter('meeting_'+id+'.mp4',  cv2.VideoWriter_fourcc(*'mp4v'), 5, (img.shape[1],img.shape[0]))
+        self.output= cv2.VideoWriter('meeting_'+id+'.mp4',  cv2.VideoWriter_fourcc(*'mp4v'), 10, (img.shape[1],img.shape[0]))
 
     def removeConfig(self, annot):
         if annot in self.config:
@@ -45,7 +45,6 @@ def updateMeeting(lock):
 
     while True:
         cmd  = input().split()
-
         # lock.acquire()
         if(cmd[0] == "add"):
             # add meeting
@@ -82,6 +81,7 @@ def updateMeeting(lock):
             else:
                 print("meeting id does not exist")
         # lock.release()
+        
 
 
 
@@ -124,23 +124,48 @@ frames = int(sys.argv[1])
 # read in from terminal
 lock= Lock()
 t_meetingHandler= Thread(target=updateMeeting, args=(lock,))
-# t_meetingHandler.start()
-# t_meetingHandler.join()
+t_meetingHandler.setDaemon(True)
+t_meetingHandler.start()
+
+
 
 annot_sent = 0
 render_sent = 0
-
+renderedAll = False
 annotFrames = {capAddress:None, skelAddress:None, clockAddress:None, renderAddress: None}
 recieved_frames = 0
+
+def sendMeetingInfo(config):
+    m_id_msg=''
+    for id in meetings:
+        if (config=='all' or meetings[id].config[config] == True):
+            m_id_msg+=','+str(id)
+
+    size_msg = str(len(m_id_msg))
+    while(len(size_msg)<8):
+        size_msg ='0' + size_msg
+    clients[renderAddress].sendall(size_msg.encode())
+    clients[renderAddress].sendall(m_id_msg.encode())
 
 ##init meetings
 m = Meeting('1')
 meetings['1'] = m
 m.addConfig('skeleton')
+
+m2 = Meeting('2')
+meetings['2'] = m2
 while True:
     try:
         count+=1
-        print(count)
+        if(count==43):
+            m.addConfig('caption')
+        if(count==53):
+            m2.addConfig('clock')
+        if(count==60):
+           m2.addConfig('skeleton')
+        if(count==73):
+            m.removeConfig('caption')
+            
 
         #read frame from vid
         success,img = vidcap.read()
@@ -157,26 +182,30 @@ while True:
         while(len(frame_size)<8):
             frame_size ='0' + frame_size
 
-        
-        # for address in clients:  
-        #     r, w, e = select.select([clients[address]], [], [],0.0) #timeout of 0, so it polls the current connection to see if data is available to be read
-          
-        #     clients[address].sendall(fnum_msg.encode())
-        #     clients[address].sendall(size_msg.encode())
-        #     clients[address].sendall('f'.encode())
-        #     clients[address].sendall(imageBytes)
+        if(count<=maxFrames):
+            for address in clients:  
+                clients[address].sendall(curr_fnum.encode())
+                clients[address].sendall(frame_size.encode())
+                clients[address].sendall('f'.encode())
+                clients[address].sendall(imageBytes)
+                if(address == renderAddress):
+                    sendMeetingInfo('all')
             
 
-
+        
         for address in clients:  
             #if data is available to be read
-            print(address)
-            r, w, e = select.select([clients[address]], [], [],0.0) #timeout of 0, so it polls the current connection to see if data is available to be read
+            r=[]
+            if(clients[address].fileno()>=0):
+                r, w, e = select.select([clients[address]], [], [],0.0) #timeout of 0, so it polls the current connection to see if data is available to be read
             while(len(r) > 0):
-                
-                
                 if (address ==  renderAddress):
-                    m_id = clients[address].recv(4).decode()
+                    data = clients[address].recv(4).decode()
+                    if(data == 'done'):
+                        renderedAll = True
+                        break
+                    else:
+                        m_id = data
                     
                     while(m_id[0]=='0'):
                         m_id = m_id[1:]
@@ -196,6 +225,7 @@ while True:
                     newImg = cv2.imdecode(imgArr,cv2.IMREAD_UNCHANGED)
 
                     meetings[m_id].output.write(newImg)
+                    r, w, e = select.select([clients[address]], [], [],0.0) #timeout of 0, so it polls the current connection to see if data is available to be read
                     
                 else:
                     #recieve data from the annot mods and send to render
@@ -204,6 +234,10 @@ while True:
                     # where annot_msg: frame_number(16) size_data(8) {id}data(size_data)
                     #the server also sends render the list of meetings that have this annotation configured
                     size = clients[address].recv(8).decode()
+                    if(len(size)==0): #when the socket on the other end is shutdown, it sends a msg with size 0
+                        clients[address].close()
+                        break
+                    
                     while(size[0]=='0'):
                         size = size[1:]
                     size= int(size)
@@ -213,46 +247,29 @@ while True:
                         render_msg+=clients[address].recv(size-len(render_msg))
 
                     clients[renderAddress].sendall(render_msg)
-                    m_id_msg=''
-                    for id in meetings:
-                        if (meetings[id].config[annotIdDict[address]] == True):
-                            m_id_msg+=','+str(id)
+                    
 
-                    size_msg = str(len(m_id_msg))
-                    while(len(size_msg)<8):
-                        size_msg ='0' + size_msg
-
-                    clients[renderAddress].sendall(size_msg.encode())
-                    clients[renderAddress].sendall(m_id_msg.encode())
-                r, w, e = select.select([clients[address]], [], [],0.0)
-            clients[address].sendall(curr_fnum.encode())
-            clients[address].sendall(frame_size.encode())
-            clients[address].sendall('f'.encode())
-            r, w, e = select.select([clients[address]], [], [],0.0)
-            print(r)
-            clients[address].sendall(imageBytes)
+                    sendMeetingInfo(annotIdDict[address])
+                    r = []
+                
+           
             
 
 
     finally:
     # Clean up the connection
     #close msg needs to be exacty 16
-        if(count==maxFrames):
+        if(count%10 == 0):
             print(count)
+        if(count==maxFrames):
+            #tell clients to close but wait until all frames are recieved to end connection
             for address in clients:  
                 clients[address].sendall("close socket....".encode())
-                clients[address].close()
+        if(renderedAll == True):
+            clients[renderAddress].close()
+            sock.close()
             break
-            
-                        
-        
 
-        
-                
-
-
-
-        
         
 vidcap.release()
 for id in meetings:

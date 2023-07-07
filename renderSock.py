@@ -4,6 +4,9 @@ import os
 from PIL import Image
 import cv2
 import numpy as np
+from collections import deque
+from threading import Thread, Lock
+import time
 
 numMods = 3
 
@@ -17,11 +20,12 @@ class Frame:
         self.shape = img.shape
 
     def addMeeting(self, id):
-        self.meetings[id] = [self.img,None]
+        self.meetings[id] = [self.img.copy(),None]
 
     def render (self, id, data, data_id):
         
         if (data_id=='m'): #m = mask; expecting new image
+            print('masking')
             maskArr = np.frombuffer(data,dtype=np.uint8)
             mask = cv2.imdecode(maskArr,cv2.IMREAD_UNCHANGED)
             img = self.meetings[id][0]
@@ -65,12 +69,12 @@ def add_caption (caption,img):
                    fontscale, color, thickness, cv2.LINE_AA)
     return img
 
+joints = [[]]*4
+joints[0] = [4,3,2,1,5,6,7] #arms
+joints[1] = [23,22,11,24,11,10,9,8,12,13,14,21,14,19,20] #legs  #[11,10,9,8,12,13,14]
+joints[2] = [1,8] #torso
 def skeleton(img,pts_3d):
     orig = img.copy()
-    joints = [[]]*4
-    joints[0] = [4,3,2,1,5,6,7] #arms
-    joints[1] = [23,22,11,24,11,10,9,8,12,13,14,21,14,19,20] #legs  #[11,10,9,8,12,13,14]
-    joints[2] = [1,8] #torso
     for r in joints:
         start = 0
         for i in r:
@@ -102,7 +106,7 @@ except OSError:
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 sock.bind(render_address)
 
-close = False
+
 ##connect to server as client
 server_address = './uds_server'
 try:
@@ -112,82 +116,124 @@ except socket.error as e:
     sys.exit(1)
 
 
-frames = {}
+close= False
 
-   
-while True:
-    try:
+global renderMsgQ
+renderMsgQ = deque()
+
+
+def readInData(lock):
+    while True:
+        # frame num
         data = sock.recv(16)
         if(data.decode() == 'close socket....'):
-            close = True
-            break
+            global close 
+            close= True
+            return
         f_num = data.decode()
         while(f_num[0]=='0'):
             f_num = f_num[1:]
-        print(f_num)
 
+        # dataSize
         size = sock.recv(8).decode()
         while(size[0]=='0'):
             size = size[1:]
         size=int(size)
 
+        # data id {f,c,h,m}
         data_id = sock.recv(1).decode()
+
+        # data
         data = sock.recv(size)  #recieve img from server
         while len(data) < size:
             data += sock.recv(size-len(data))
+
+        # meeting info size
+        mSize = sock.recv(8).decode()
+        while(mSize[0]=='0'  and len(mSize)>1):
+            mSize = mSize[1:]
+        mSize=int(mSize)
+
+        #meeting info
+        meetingInfo = sock.recv(mSize)  #recieve img from server
+        while len(meetingInfo) < mSize:
+            meetingInfo += sock.recv(mSize-len(meetingInfo))
+        meetingInfo = meetingInfo.decode().split(',')[1:]
+
         
-        if data_id == 'f':
-            imgArr = np.frombuffer(data,dtype=np.uint8)
-            img = cv2.imdecode(imgArr,cv2.IMREAD_UNCHANGED)
-            frames[f_num] = Frame(img)
-        else:
-            size = sock.recv(8).decode()
-            while(size[0]=='0'  and len(size)>1):
-                size = size[1:]
-            size=int(size)
-            meetingInfo = sock.recv(size)  #recieve img from server
-            while len(meetingInfo) < size:
-                meetingInfo += sock.recv(size-len(meetingInfo))
+        renderMsgQ.append([f_num, data_id, data, meetingInfo])
+        
+
+        #el --> [frame number, id,data,meetings]
+
             
-            meetingInfo = meetingInfo.decode().split(',')[1:]  #the first character would be a comma in meetingInfo so first item in split would be ''
-            print(meetingInfo)
-            for i in meetingInfo:
-                print(i)
-                #meeting exists
-                if i in frames[f_num].meetings:
-                    frames[f_num].render(i,data,data_id)
-                else:
-                    frames[f_num].addMeeting(i)
-                    frames[f_num].render(i,data,data_id)
-            frames[f_num].remaining -= 1
-            if(frames[f_num].remaining == 0):
-                for mid in  frames[f_num].meetings:
-                    
-                    #caption is added at the end so that it's not covered by the other annotations
-                    frames[f_num].placeCaption(mid)
-                    img = frames[f_num].meetings[mid][0]
-                    imgBytes = cv2.imencode('.png', img)[1].tobytes()
+            
+            
+            
 
-                    #send meeting id (4 bytes)
-                    id_msg = str(mid)
-                    while(len(id_msg)<4):
-                        id_msg ='0' + id_msg
-                    sock.sendall(id_msg.encode())
-                    print(id_msg)
 
-                    #send size of frame (16 bytes)
-                    size_msg = str(len(imgBytes))
-                    while(len(size_msg)<8):
-                        size_msg ='0' + size_msg
-                    sock.sendall(size_msg.encode())
-                    
+frames = {}
 
-                    #send img bytes
-                    sock.sendall(imgBytes)
+lock= Lock()
+t_recieveData= Thread(target=readInData, args=(lock,))
+t_recieveData.start()
+
+   
+while True:
+    try:
+        if(len(renderMsgQ)>0):
+
+            msg = renderMsgQ.popleft()
+           
+            #[frame number, data id, data, meetings]
+        
+            if msg[1] == 'f':
+                imgArr = np.frombuffer(msg[2],dtype=np.uint8)
+                img = cv2.imdecode(imgArr,cv2.IMREAD_UNCHANGED)
+                currFrame = Frame(img)
+                frames[msg[0]] = currFrame
+                # add all meetings for this frame
+                for i in msg[3]:
+                    currFrame.addMeeting(i)
+            else:
+                startElse = time.time()
+                currFrame = frames[msg[0]]
+                for i in msg[3]:
+                    #meeting exists
+                    if i in currFrame.meetings:
+                        # startRender = time.time()
+                        currFrame.render(i,msg[2],msg[1])
+                        # print(time.time()-startRender)
+                currFrame.remaining -= 1
+                if(currFrame.remaining == 0):
+                    del frames[msg[0]]
+                    for mid in  currFrame.meetings:
+                        #caption is added at the end so that it's not covered by the other annotations
+                        currFrame.placeCaption(mid)
+                        img = currFrame.meetings[mid][0]
+                        imgBytes = cv2.imencode('.png', img)[1].tobytes()
+
+                        #send meeting id (4 bytes)
+                        id_msg = str(mid)
+                        while(len(id_msg)<4):
+                            id_msg ='0' + id_msg
+                        sock.sendall(id_msg.encode())
+
+                        #send size of frame (16 bytes)
+                        size_msg = str(len(imgBytes))
+                        while(len(size_msg)<8):
+                            size_msg ='0' + size_msg
+                        sock.sendall(size_msg.encode())
+                        
+                        #send img bytes
+                        sock.sendall(imgBytes)
+               
+                        
         
         
     finally:
-        if(close==True):
+        if(close==True and len(renderMsgQ)==0):
+            sock.sendall('done'.encode())
             print ('closing socket')
             sock.close()
             break

@@ -63,6 +63,7 @@ while True:
     try:
          # Recieve size then image from server
         data = sock.recv(16)
+        print("recieved: "+ data.decode())
         if(data.decode() == 'close socket....'):
             close = True
             break
@@ -70,7 +71,7 @@ while True:
         f_num = f_num_msg.decode()
         while(f_num[0]=='0'):
             f_num = f_num[1:]
-        print(f_num)
+        
 
         size = sock.recv(8).decode()
         while(size[0]=='0'):
@@ -105,6 +106,7 @@ while True:
 
         sock.sendall(sizeRenderMsg.encode())
         sock.sendall(renderMsg)
+        print("sent"+str(f_num))
 
 
 
