@@ -15,14 +15,15 @@ maxFrames = int(sys.argv[1])
 # image_path = 'test.jpeg'
 
 vidcap = cv2.VideoCapture('11_forms_demo_4min.mp4')
-success,img = vidcap.read()
+for i in range(0,500):
+    success,img = vidcap.read()
 
 meetings = {}
 
 class Meeting:
     def __init__(self,id):
         self.config = {"skeleton": False, "caption": False, "clock":False}
-        self.output= cv2.VideoWriter('meeting_'+id+'.mp4',  cv2.VideoWriter_fourcc(*'mp4v'), 10, (img.shape[1],img.shape[0]))
+        self.output= cv2.VideoWriter('meeting_'+id+'.mp4',  cv2.VideoWriter_fourcc(*'mp4v'), 20, (img.shape[1],img.shape[0]))
 
     def removeConfig(self, annot):
         if annot in self.config:
@@ -76,6 +77,7 @@ def updateMeeting(lock):
                 print("meeting id does not exist")
         # rm annot
         elif(cmd[2] == "rm"):
+            id  = cmd[1]
             if id in meetings:
                 meetings[id].removeConfig(cmd[3])
             else:
@@ -148,15 +150,18 @@ def sendMeetingInfo(config):
     clients[renderAddress].sendall(m_id_msg.encode())
 
 ##init meetings
-m = Meeting('1')
-meetings['1'] = m
-m.addConfig('skeleton')
 
-m2 = Meeting('2')
-meetings['2'] = m2
 while True:
     try:
         count+=1
+
+        if (count ==1):
+            m = Meeting('1')
+            meetings['1'] = m
+            m.addConfig('skeleton')
+
+            m2 = Meeting('2')
+            meetings['2'] = m2
         if(count==43):
             m.addConfig('caption')
         if(count==53):

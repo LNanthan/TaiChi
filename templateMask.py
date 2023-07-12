@@ -41,7 +41,9 @@ saved_model_dir = 'shapemask' #@param {type:"string"}
 _ = tf.saved_model.load(session,['serve'] ,saved_model_dir)
 print(tf.config.list_physical_devices('GPU'))
 
-
+input_pts = np.array([[861,651],[1479,651],[1479,1022],[861,1022]],dtype = "float32")
+output_pts = np.array([[786,708],[1291,666],[1548,936],[1033,1018]],dtype = "float32")
+M = cv2.getPerspectiveTransform(input_pts,output_pts)
 
 def mask_image (imageBytes):
     imgArr = np.frombuffer(imageBytes,dtype=np.uint8)
@@ -83,7 +85,8 @@ def mask_image (imageBytes):
 
     #replace with clock
     drawing = np.zeros((height,width),dtype = np.uint8) #black background
-    drawing = cv2.rectangle(drawing, (int(width*0.45),int(height*0.5)), (int(width*0.9),int(height*0.9)), 255, -1) #red filled rect 
+    drawing = cv2.rectangle(drawing, (int(width*0.45),int(height*0.6)), (int(width*0.7),int(height*0.95)), 255, -1) #filled rect 
+    drawing = cv2.warpPerspective(drawing,M,(width, height),flags=cv2.INTER_LINEAR)
 
     
     person = cv2.bitwise_or(segmentations[0].reshape(height,width,1),segmentations[1].reshape(height,width,1))

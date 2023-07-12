@@ -14,26 +14,30 @@ class Frame:
 
     #meetings --> id: [img,caption]
     def __init__(self,img):
+        self.caption = None
         self.meetings = {}
         self.remaining = numMods
         self.img = img
         self.shape = img.shape
 
     def addMeeting(self, id):
+        #each meeting has the current frame and caption
         self.meetings[id] = [self.img.copy(),None]
 
     def render (self, id, data, data_id):
         
         if (data_id=='m'): #m = mask; expecting new image
-            print('masking')
             maskArr = np.frombuffer(data,dtype=np.uint8)
             mask = cv2.imdecode(maskArr,cv2.IMREAD_UNCHANGED)
             img = self.meetings[id][0]
             drawing = img.copy()
-            drawing = cv2.rectangle(drawing, (0,0), (self.shape[1],self.shape[0]), (0,0,255,255), -1) #filled rect 
+
+            #color of the annotation
+            drawing = cv2.rectangle(drawing, (0,0), (self.shape[1],self.shape[0]), (0,0,0,255), -1) #filled rect 
             object = cv2.bitwise_and(drawing, drawing, mask=mask) 
             inversion = cv2.bitwise_and(img, img, mask=cv2.bitwise_not(mask)) 
             img = cv2.bitwise_or(object, inversion)
+            self.meetings[id][0] = img
 
         elif (data_id =='c'): #c = caption
             self.meetings[id][1] = data.decode() # store caption
@@ -164,9 +168,6 @@ def readInData(lock):
         renderMsgQ.append([f_num, data_id, data, meetingInfo])
         
 
-        #el --> [frame number, id,data,meetings]
-
-            
             
             
             
@@ -196,7 +197,6 @@ while True:
                 for i in msg[3]:
                     currFrame.addMeeting(i)
             else:
-                startElse = time.time()
                 currFrame = frames[msg[0]]
                 for i in msg[3]:
                     #meeting exists

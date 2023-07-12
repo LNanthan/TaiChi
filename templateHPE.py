@@ -34,7 +34,7 @@ def get_kpts(img):
 
     #--display 0 and --render_pose 0 saves time
     p = subprocess.call(['./build/examples/openpose/openpose.bin', '--image_dir', '../data/images/', '--write_json', '../data/annots/', 
-                         '--display', '0', '--render_pose', '0','--net_resolution','-1x176'])
+                         '--display', '0', '--render_pose', '0','--net_resolution','-1x368'])
 
     os.chdir(curr_dir) #change back to main dir
     end = time.time()
@@ -97,7 +97,7 @@ def get3D (real_kpts,mirror_kpts):
     points_3D = np.transpose(points_3D)
 
     for i in range(0,len(real_kpts)):
-        if real_kpts[i][2]<=0.3:
+        if real_kpts[i][2]<=0.05:
             real_projected[i]=[-1,-1]  #kpts w/ confidence of 0 will be negative so it's not drawn on
 
     return real_projected
