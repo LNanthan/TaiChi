@@ -55,15 +55,15 @@ def skeleton(img,pts_3d):
 
 count = 0
 caption_size = 20
-server_address = './uds_socket'
+server_address = './uds_server'
 # image_path = 'test.jpeg'
 
 vidcap = cv2.VideoCapture('11_forms_demo_4min.mp4')
 success,img = vidcap.read()
-for i in range (0,3100):
+for i in range (0,300):
     success,img = vidcap.read()
 # success = True
-result = cv2.VideoWriter('capv2_test.mp4',  cv2.VideoWriter_fourcc(*'mp4v'), 20, (img.shape[1],img.shape[0]))
+result = cv2.VideoWriter('skel_test.mp4',  cv2.VideoWriter_fourcc(*'mp4v'), 20, (img.shape[1],img.shape[0]))
 
 try:
     os.unlink(server_address)

@@ -41,9 +41,6 @@ saved_model_dir = 'shapemask' #@param {type:"string"}
 _ = tf.saved_model.load(session,['serve'] ,saved_model_dir)
 print(tf.config.list_physical_devices('GPU'))
 
-input_pts = np.array([[861,651],[1479,651],[1479,1022],[861,1022]],dtype = "float32")
-output_pts = np.array([[786,708],[1291,666],[1548,936],[1033,1018]],dtype = "float32")
-M = cv2.getPerspectiveTransform(input_pts,output_pts)
 
 def mask_image (imageBytes):
     imgArr = np.frombuffer(imageBytes,dtype=np.uint8)
@@ -69,16 +66,12 @@ def mask_image (imageBytes):
     segmentations = coco_utils.generate_segmentation_from_masks(instance_masks, processed_boxes, height, width) 
 
     filter_arr = []
-    for c in detection_classes:
-        if c == 1:  #class 1 --> person
+    for i in range(0,len(detection_classes)):
+        if detection_classes[i] == 1 and detection_scores[1]>0.7:  #class 1 --> person
             filter_arr.append(True)
         else:
             filter_arr.append(False)
 
-
-    detection_boxes = detection_boxes[filter_arr]
-    detection_classes= detection_classes[filter_arr]
-    detection_scores = detection_scores[filter_arr]
     segmentations = segmentations[filter_arr]   #segmentations is an array of 1's & 0's denoting where the person is in the img
     
     
@@ -86,24 +79,19 @@ def mask_image (imageBytes):
     #replace with clock
     drawing = np.zeros((height,width),dtype = np.uint8) #black background
     drawing = cv2.rectangle(drawing, (int(width*0.45),int(height*0.6)), (int(width*0.7),int(height*0.95)), 255, -1) #filled rect 
-    drawing = cv2.warpPerspective(drawing,M,(width, height),flags=cv2.INTER_LINEAR)
 
-    
     person = cv2.bitwise_or(segmentations[0].reshape(height,width,1),segmentations[1].reshape(height,width,1))
-
 
     ##segmentations is represented by 1's & 0's but for bitwise_or need 0XFF --> scale by 255
     person = cv2.convertScaleAbs(person, alpha=255, beta=0)  
     
     mask = cv2.subtract(drawing,person)
 
-
-
     return cv2.imencode('.png', mask)[1].tobytes()
 
 
 server_address = './uds_server'
-mask_address = './uds_clock'
+mask_address = './uds_mask'
 
 try:
     os.unlink(mask_address)

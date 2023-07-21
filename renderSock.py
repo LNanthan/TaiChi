@@ -33,7 +33,7 @@ class Frame:
             drawing = img.copy()
 
             #color of the annotation
-            drawing = cv2.rectangle(drawing, (0,0), (self.shape[1],self.shape[0]), (0,0,0,255), -1) #filled rect 
+            drawing = cv2.rectangle(drawing, (0,0), (self.shape[1],self.shape[0]), (0,0,255,255), -1) #filled rect 
             object = cv2.bitwise_and(drawing, drawing, mask=mask) 
             inversion = cv2.bitwise_and(img, img, mask=cv2.bitwise_not(mask)) 
             img = cv2.bitwise_or(object, inversion)
@@ -177,6 +177,7 @@ frames = {}
 
 lock= Lock()
 t_recieveData= Thread(target=readInData, args=(lock,))
+t_recieveData.daemon = True
 t_recieveData.start()
 
    
@@ -187,7 +188,6 @@ while True:
             msg = renderMsgQ.popleft()
            
             #[frame number, data id, data, meetings]
-        
             if msg[1] == 'f':
                 imgArr = np.frombuffer(msg[2],dtype=np.uint8)
                 img = cv2.imdecode(imgArr,cv2.IMREAD_UNCHANGED)

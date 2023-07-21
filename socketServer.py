@@ -15,14 +15,14 @@ maxFrames = int(sys.argv[1])
 # image_path = 'test.jpeg'
 
 vidcap = cv2.VideoCapture('11_forms_demo_4min.mp4')
-for i in range(0,500):
+for i in range(0,1460):
     success,img = vidcap.read()
 
 meetings = {}
 
 class Meeting:
     def __init__(self,id):
-        self.config = {"skeleton": False, "caption": False, "clock":False}
+        self.config = {"HPE": False, "caption": False, "mask":False}
         self.output= cv2.VideoWriter('meeting_'+id+'.mp4',  cv2.VideoWriter_fourcc(*'mp4v'), 20, (img.shape[1],img.shape[0]))
 
     def removeConfig(self, annot):
@@ -41,7 +41,7 @@ class Meeting:
 def updateMeeting(lock): 
     # add meeting {id}
     # rm meeting {id}
-    # m {id} add {annot} --> annot = {skeleton, caption, clock}
+    # m {id} add {annot} --> annot = {skeleton, caption, mask}
     # m {id} rm {annot} 
 
     while True:
@@ -99,16 +99,17 @@ sock.listen(1)
 
 
 capAddress  = './uds_caption'
-skelAddress  = './uds_skeleton'
-clockAddress  = './uds_clock'
+HPEAddress  = './uds_hpe'
+maskAddress  = './uds_mask'
 renderAddress  = './uds_render'
 
-module_addresses = ['./uds_caption','./uds_skeleton', './uds_clock', './uds_render']
-annotIdDict = {capAddress:'caption', skelAddress:'skeleton', clockAddress:'clock'}
+module_addresses = ['./uds_caption','./uds_hpe', './uds_mask', './uds_render']
+annotIdDict = {capAddress:'caption', HPEAddress:'HPE', maskAddress:'mask'}
 
 # connect to all the cllient modules
 modules = 4
-clients = {capAddress:None, skelAddress:None, clockAddress:None, renderAddress: None}
+clients = {capAddress:None, HPEAddress:None, maskAddress:None, renderAddress: None}
+
 i= 0
 # Wait for a connection from all clients
 print("listening for connections")
@@ -134,7 +135,7 @@ t_meetingHandler.start()
 annot_sent = 0
 render_sent = 0
 renderedAll = False
-annotFrames = {capAddress:None, skelAddress:None, clockAddress:None, renderAddress: None}
+annotFrames = {capAddress:None, HPEAddress:None, maskAddress:None, renderAddress: None}
 recieved_frames = 0
 
 def sendMeetingInfo(config):
@@ -154,23 +155,14 @@ def sendMeetingInfo(config):
 while True:
     try:
         count+=1
-
+        
+        #add all configs at start
         if (count ==1):
             m = Meeting('1')
             meetings['1'] = m
-            m.addConfig('skeleton')
-
-            m2 = Meeting('2')
-            meetings['2'] = m2
-        if(count==43):
+            m.addConfig('mask')
+            m.addConfig('HPE')
             m.addConfig('caption')
-        if(count==53):
-            m2.addConfig('clock')
-        if(count==60):
-           m2.addConfig('skeleton')
-        if(count==73):
-            m.removeConfig('caption')
-            
 
         #read frame from vid
         success,img = vidcap.read()
@@ -212,7 +204,7 @@ while True:
                     else:
                         m_id = data
                     
-                    while(m_id[0]=='0'):
+                    while(len(m_id)>0 and m_id[0]=='0'):
                         m_id = m_id[1:]
 
                     size = clients[address].recv(8).decode()
