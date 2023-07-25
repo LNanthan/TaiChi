@@ -40,9 +40,6 @@ os.makedirs(data_pth+"/annots")
 curr_dir = os.getcwd()
 
 def get_kpts(img):
-    csv_data = []
-    start = time.time()
-    
     kpts = []
 
     ##read in image
@@ -60,10 +57,7 @@ def get_kpts(img):
     for i in kpt_data['people']:
         kpt_arr = np.array(i['pose_keypoints_2d'])
         kpts.append(kpt_arr.reshape(25,3))    
-    
-    end = time.time()
-    csv_data.append(end-start)
-    csv_data.append(end-st)
+
     return kpts
 
 
